@@ -8,7 +8,7 @@ public class Player {
     private String name;
     private int stones;
 
-    public Player(String name, String id) {
+    public Player(String name) {
         this.id = UUID.randomUUID().toString();
         this.name = name;
     }

@@ -30,12 +30,14 @@ public class RoomService {
     public GameRoom joinRoom(String roomId, Player player2) {
         GameRoom room = activeRooms.get(roomId);
 
-        // FIX 1: We must fetch the game from the room to check Player 2
-        if (room != null && room.getGame().getPlayer2() == null) {
-
-            // FIX 2: This custom setter automatically changes the GameStatus to PLAYER_1_TURN!
-            room.getGame().setPlayer2(player2);
+        if (room == null) {
+            throw new IllegalArgumentException("Room not found: " + roomId);
         }
+        if (room.getGame().getPlayer2() != null) {
+            throw new IllegalStateException("Room is already full.");
+        }
+
+        room.getGame().setPlayer2(player2);
         return room;
     }
 

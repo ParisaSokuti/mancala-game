@@ -15,9 +15,6 @@ public class GameService {
     public GameRoom makeMove(String roomId, String playerId, int pitIndex) {
         // 1. Find the room
         GameRoom room = roomService.getRoom(roomId);
-        if (room == null) {
-            throw new IllegalArgumentException("Room not found");
-        }
 
         // 2. Tell the Game to execute the move!
         room.getGame().playTurn(playerId, pitIndex);

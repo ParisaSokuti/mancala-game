@@ -9,28 +9,17 @@ public class Game {
         GAME_OVER
     }
 
-    private Player player1;
+    private final Player player1;
     private Player player2;
-    private Pit[] pits;
+    private final Board board;
     private GameStatus gameStatus;
 
     // --- 1. CONSTRUCTOR & INITIALIZATION ---
 
     public Game(Player player1) {
         this.player1 = player1;
-        initializeGame();
-    }
-
-    private void initializeGame() {
+        this.board = new Board();
         this.gameStatus = GameStatus.WAITING_FOR_PLAYER_2;
-        this.pits = new Pit[14];
-        for (int i = 0; i < 14; i++) {
-            if (i == 6 || i == 13) {
-                this.pits[i] = new Pit(0); // Stores start empty
-            } else {
-                this.pits[i] = new Pit(4); // Normal pits start with 4
-            }
-        }
     }
 
     // --- 2. LIFECYCLE METHODS ---
@@ -51,67 +40,64 @@ public class Game {
 
     private void endGame() {
         this.gameStatus = GameStatus.GAME_OVER;
-
-        // Sweep Player 1's side
-        for (int i = 0; i <= 5; i++) {
-            int remainingStones = pits[i].clear();
-            pits[6].addStones(remainingStones);
-        }
-
-        // Sweep Player 2's side
-        for (int i = 7; i <= 12; i++) {
-            int remainingStones = pits[i].clear();
-            pits[13].addStones(remainingStones);
-        }
+        board.sweepRemaining(Board.PLAYER_1_PIT_START, Board.PLAYER_1_PIT_END, Board.PLAYER_1_STORE);
+        board.sweepRemaining(Board.PLAYER_2_PIT_START, Board.PLAYER_2_PIT_END, Board.PLAYER_2_STORE);
     }
 
     // --- 3. THE CORE ENGINE ---
 
     public void playTurn(String playerId, int pitIndex) {
-        // 1. Enforce the rules
         validateMove(playerId, pitIndex);
 
         boolean isPlayer1 = isPlayer1(playerId);
-        int myStoreIndex = isPlayer1 ? 6 : 13;
-        int opponentStoreIndex = isPlayer1 ? 13 : 6;
+        int myStoreIndex = board.getStoreIndex(isPlayer1);
+        int opponentStoreIndex = board.getStoreIndex(!isPlayer1);
 
-        // 2. Pick up stones
-        int stonesInHand = pits[pitIndex].clear();
-        int currentIndex = pitIndex;
+        int lastIndex = board.sowStones(pitIndex, opponentStoreIndex);
 
-        // 3. The Sowing Loop
-        while (stonesInHand > 0) {
-            currentIndex = (currentIndex + 1) % 14;
+        board.attemptCapture(isPlayer1, lastIndex, myStoreIndex);
 
-            if (currentIndex == opponentStoreIndex) {
-                continue; // Skip opponent's store
-            }
-
-            pits[currentIndex].increment();
-            stonesInHand--;
-        }
-
-        // 4. Capture Rule
-        if (currentIndex != myStoreIndex && isMySide(isPlayer1, currentIndex) && pits[currentIndex].getStones() == 1) {
-            int oppositeIndex = 12 - currentIndex;
-            if (pits[oppositeIndex].getStones() > 0) {
-                int capturedStones = pits[oppositeIndex].clear() + pits[currentIndex].clear();
-                pits[myStoreIndex].addStones(capturedStones);
-            }
-        }
-
-        // 5. Free Turn Check
-        if (currentIndex != myStoreIndex) {
+        if (lastIndex != myStoreIndex) {
             switchTurn();
         }
 
-        // 6. End of Game Check
         checkGameOver();
     }
+
+    private void checkGameOver() {
+        boolean p1Empty = board.isSideEmpty(Board.PLAYER_1_PIT_START, Board.PLAYER_1_PIT_END);
+        boolean p2Empty = board.isSideEmpty(Board.PLAYER_2_PIT_START, Board.PLAYER_2_PIT_END);
+
+        if (p1Empty || p2Empty) {
+            endGame();
+        }
+    }
+
+    public String getWinner() {
+        if (gameStatus != GameStatus.GAME_OVER) {
+            return null;
+        }
+
+        int p1Score = board.getPlayer1Score();
+        int p2Score = board.getPlayer2Score();
+
+        if (p1Score > p2Score) {
+            return player1.getId();
+        } else if (p2Score > p1Score) {
+            return player2.getId();
+        } else {
+            return "DRAW";
+        }
+    }
+
 
     // --- 4. INTERNAL VALIDATION & HELPERS ---
 
     private void validateMove(String playerId, int pitIndex) {
+        if (playerId == null || (!isPlayer1(playerId) && (player2 == null || !player2.getId().equals(playerId)))) {
+            throw new IllegalArgumentException("Unknown player.");
+        }
+
         boolean isPlayer1 = isPlayer1(playerId);
 
         if (this.gameStatus == GameStatus.WAITING_FOR_PLAYER_2 || this.gameStatus == GameStatus.GAME_OVER) {
@@ -123,30 +109,13 @@ public class Game {
         if (!isPlayer1 && this.gameStatus != GameStatus.PLAYER_2_TURN) {
             throw new IllegalStateException("It's not Player 2's turn!");
         }
-        if (isPlayer1 && (pitIndex < 0 || pitIndex > 5)) {
-            throw new IllegalArgumentException("Player 1 can only pick pits 0-5.");
+        if (!board.isOnSide(isPlayer1, pitIndex)) {
+            throw new IllegalArgumentException(
+                isPlayer1 ? "Player 1 can only pick pits 0-5." : "Player 2 can only pick pits 7-12."
+            );
         }
-        if (!isPlayer1 && (pitIndex < 7 || pitIndex > 12)) {
-            throw new IllegalArgumentException("Player 2 can only pick pits 7-12.");
-        }
-        if (this.pits[pitIndex].getStones() == 0) {
+        if (board.getStonesAt(pitIndex) == 0) {
             throw new IllegalArgumentException("Cannot pick an empty pit.");
-        }
-    }
-
-    private void checkGameOver() {
-        boolean p1Empty = true;
-        boolean p2Empty = true;
-
-        for (int i = 0; i <= 5; i++) {
-            if (pits[i].getStones() > 0) p1Empty = false;
-        }
-        for (int i = 7; i <= 12; i++) {
-            if (pits[i].getStones() > 0) p2Empty = false;
-        }
-
-        if (p1Empty || p2Empty) {
-            endGame();
         }
     }
 
@@ -154,17 +123,14 @@ public class Game {
         return this.player1.getId().equals(playerId);
     }
 
-    private boolean isMySide(boolean isPlayer1, int index) {
-        return isPlayer1 ? (index >= 0 && index <= 5) : (index >= 7 && index <= 12);
-    }
+    // --- 5. PUBLIC GETTERS ---
 
-    // --- 5. PUBLIC GETTERS (No Setters allowed for internal state!) ---
-
-    public int getPlayer1Score() { return pits[6].getStones(); }
-    public int getPlayer2Score() { return pits[13].getStones(); }
+    public int getPlayer1Score() { return board.getPlayer1Score(); }
+    public int getPlayer2Score() { return board.getPlayer2Score(); }
 
     public Player getPlayer1() { return player1; }
     public Player getPlayer2() { return player2; }
-    public Pit[] getPits() { return pits; }
+    public Board getBoard() { return board; }
     public GameStatus getGameStatus() { return gameStatus; }
 }
+
